@@ -143,7 +143,7 @@ export default function Recorder() {
       if (!res.ok) continue;
       const data = await res.json();
       if (data.mediaId && data.status !== "waiting") {
-        router.push(`/v/${data.mediaId}`);
+        router.push(`/share/${data.mediaId}`);
         return;
       }
     }

@@ -24,7 +24,7 @@ export default function Uploader() {
       if (!res.ok) throw new Error("Failed to get upload URL");
       const { uploadId, url } = await res.json();
 
-      // 2. Upload file directly via PUT (signed GCS URL only accepts PUT, not resumable POST)
+      // 2. Upload file directly via PUT to the FastPix signed GCS URL
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", url);
@@ -64,7 +64,7 @@ export default function Uploader() {
       if (!res.ok) continue;
       const data = await res.json();
       if (data.mediaId && data.status !== "waiting") {
-        router.push(`/v/${data.mediaId}`);
+        router.push(`/share/${data.mediaId}`);
         return;
       }
     }

@@ -43,11 +43,17 @@ export default function Home() {
         Record your screen or camera
       </Link>
 
-      <footer className="mt-16 text-xs text-gray-700">
-        Powered by{" "}
-        <a href="https://fastpix.io" target="_blank" rel="noopener noreferrer" className="hover:text-gray-500">
-          FastPix
-        </a>
+      <footer className="mt-16 text-sm text-gray-500 flex items-center gap-4">
+        <span>
+          Powered by{" "}
+          <a href="https://fastpix.io" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+            FastPix
+          </a>
+        </span>
+        <span className="text-gray-700">·</span>
+        <Link href="/terms" className="text-gray-400 hover:text-white transition-colors">
+          Terms
+        </Link>
       </footer>
     </main>
   );
