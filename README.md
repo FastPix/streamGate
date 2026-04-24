@@ -102,7 +102,8 @@ Manage the full video upload lifecycle — from generating signed URLs to pollin
 
 Every video is accessible at a permanent URL once its status reaches `ready`.
 
-- **Watch Page** — `/v/[mediaId]` — embeds the FastPix HLS player with Open Graph metadata for rich link previews
+- **Watch Page** — `/share/[mediaId]` — embeds the FastPix HLS player with Open Graph metadata for rich link previews
+- **Terms Page** — `/terms` — terms of use and media retention policy
 
 ### Recording
 
@@ -209,7 +210,7 @@ const fp = new Fastpix({
 
 const result = await fp.inputVideo.upload({
   corsOrigin: '*',
-  pushMediaSettings: { accessPolicy: 'public', maxResolution: '1080p' },
+  pushMediaSettings: { accessPolicy: 'public', mediaQuality: 'premium', maxResolution: '1080p' },
 });
 
 console.log(result.data.uploadId, result.data.url);
@@ -306,7 +307,7 @@ npm run pages:deploy
 
 In the [Cloudflare Dashboard](https://dash.cloudflare.com) go to **Pages → your project → Settings → Environment variables** and add all four variables for both Production and Preview environments.
 
-Update `NEXT_PUBLIC_BASE_URL` to your production domain (e.g. `https://streamgate.pages.dev`).
+Update `NEXT_PUBLIC_BASE_URL` to your production domain (e.g. `https://streamgate.dev`).
 
 
 ## Environment Variables Reference

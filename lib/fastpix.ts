@@ -6,7 +6,7 @@ function createClient() {
 
   if (!accessTokenId || !secretKey) {
     throw new Error(
-      "Missing FastPix credentials. Copy .env.local.example to .env.local and fill in your credentials."
+      "Missing FastPix credentials. Create a .env.local file and add FASTPIX_ACCESS_TOKEN_ID and FASTPIX_SECRET_KEY."
     );
   }
 
