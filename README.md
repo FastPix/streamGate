@@ -1,11 +1,13 @@
 # StreamGate
 
+**Live demo: [streamgate.dev](https://streamgate.dev)**
+
 A self-hostable video sharing web app built on [Next.js](https://nextjs.org) and powered by [FastPix](https://fastpix.io). Upload a video or record your screen/camera directly in the browser — get a shareable link in seconds.
 
 
 ## Introduction
 
-StreamGate demonstrates a complete video upload and playback workflow using FastPix APIs. It provides drag-and-drop file uploading with resumable chunked transfers, in-browser screen and camera recording, adaptive HLS playback, and webhook event handling — all without a database. Every video gets a permanent shareable URL and is delivered via FastPix's global CDN with an adaptive bitrate ladder.
+StreamGate demonstrates a complete video upload and playback workflow using FastPix APIs. It provides drag-and-drop file uploading, in-browser screen and camera recording, adaptive HLS playback, and webhook event handling — all without a database. Every video gets a permanent shareable URL and is delivered via FastPix's global CDN with an adaptive bitrate ladder.
 
 ## Prerequisites
 
@@ -27,19 +29,6 @@ To run StreamGate, you need a FastPix account and API credentials:
 - FastPix APIs authenticate with a **Username** (Access Token ID) and a **Password** (Secret Key).
 - Follow the [Authentication with Basic Auth](https://docs.fastpix.io/docs/basic-authentication) guide to generate your credentials from the FastPix dashboard.
 
-### Environment Variables
-
-Configure your credentials in a `.env.local` file at the project root:
-
-```bash
-FASTPIX_ACCESS_TOKEN_ID=your-access-token-id
-FASTPIX_SECRET_KEY=your-secret-key
-FASTPIX_WEBHOOK_SECRET=your-webhook-secret
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-```
-
-> Security Note: Never commit `.env.local` to version control. It is already included in `.gitignore`.
-
 
 ## Table of Contents
 
@@ -60,8 +49,8 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ### 1. Clone and install
 
 ```bash
-git clone <your-repo-url>
-cd streamgate
+git clone https://github.com/FastPix/streamGate.git
+cd streamGate
 npm install
 ```
 
@@ -84,6 +73,8 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 Get your Access Token ID and Secret Key from the [FastPix Dashboard](https://dashboard.fastpix.io) under **Settings → Access Tokens**.
 
+> Security Note: Never commit `.env.local` to version control. It is already included in `.gitignore`.
+
 ### 3. Run the development server
 
 ```bash
@@ -91,6 +82,7 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
 
 <!-- Start Available Routes and Operations [operations] -->
 ## Available Routes and Operations
@@ -152,21 +144,15 @@ Then call the routes from your existing frontend:
 // 1. Get a signed upload URL
 const { uploadId, url } = await fetch('/api/uploads', { method: 'POST' }).then(r => r.json());
 
-// 2. Upload the file directly to FastPix (chunked, resumable)
-import { Uploader } from '@fastpix/resumable-uploads';
+// 2. Upload the file directly to FastPix via PUT
+await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
 
-const uploader = Uploader.init({ endpoint: url, file, chunkSize: 5 * 1024 });
-await new Promise((resolve, reject) => {
-  uploader.on('success', resolve);
-  uploader.on('error', (e) => reject(new Error(e.detail?.message)));
-});
-
-// 3. Poll until the media asset is ready
+// 3. Poll until the media asset is ready (with a 2-minute timeout)
 let mediaId;
-while (!mediaId) {
+for (let i = 0; i < 60; i++) {
   await new Promise(r => setTimeout(r, 2000));
   const data = await fetch(`/api/uploads/${uploadId}`).then(r => r.json());
-  if (data.mediaId) mediaId = data.mediaId;
+  if (data.mediaId && data.status !== 'waiting') { mediaId = data.mediaId; break; }
 }
 
 // 4. Get the playback ID and embed the player
@@ -177,7 +163,7 @@ const { playbackId } = await fetch(`/api/assets/${mediaId}`).then(r => r.json())
 
 Copy the ready-made components into your own Next.js / React project:
 
-**`<Uploader />`** — drag-and-drop file upload with chunked progress:
+**`<Uploader />`** — drag-and-drop file upload with progress bar:
 ```tsx
 import Uploader from '@/components/Uploader';
 
@@ -200,7 +186,7 @@ import Recorder from '@/components/Recorder';
 
 Additional dependencies:
 ```bash
-npm install @fastpix/fp-player @fastpix/resumable-uploads swr fix-webm-duration
+npm install @fastpix/fp-player swr fix-webm-duration
 ```
 
 ### Option C — FastPix SDK directly
@@ -262,7 +248,6 @@ All API routes return JSON error responses with an `error` field and an appropri
 
 | Status | Cause |
 |---|---|
-| `400` | Missing or invalid request parameters |
 | `401` | Webhook signature verification failed |
 | `500` | FastPix API error or unexpected server failure |
 
@@ -321,6 +306,8 @@ npm run pages:deploy
 
 In the [Cloudflare Dashboard](https://dash.cloudflare.com) go to **Pages → your project → Settings → Environment variables** and add all four variables for both Production and Preview environments.
 
+Update `NEXT_PUBLIC_BASE_URL` to your production domain (e.g. `https://streamgate.pages.dev`).
+
 
 ## Environment Variables Reference
 
@@ -329,7 +316,7 @@ In the [Cloudflare Dashboard](https://dash.cloudflare.com) go to **Pages → you
 | `FASTPIX_ACCESS_TOKEN_ID` | Yes | Basic Auth username for the FastPix API |
 | `FASTPIX_SECRET_KEY` | Yes | Basic Auth password for the FastPix API |
 | `FASTPIX_WEBHOOK_SECRET` | No | HMAC-SHA256 key for verifying webhook payloads |
-| `NEXT_PUBLIC_BASE_URL` | Yes | Base URL used in shareable video links and OG metadata |
+| `NEXT_PUBLIC_BASE_URL` | No | Base URL used in shareable links (e.g. `https://streamgate.dev`, defaults to `http://localhost:3000`) |
 
 
 ## License
