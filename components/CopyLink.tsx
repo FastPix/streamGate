@@ -11,7 +11,16 @@ export default function CopyLink({ url }: CopyLinkProps) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    copy(url);
+    let resolvedUrl = url;
+
+    if (typeof window !== "undefined") {
+      const parsedUrl = new URL(url, window.location.origin);
+      parsedUrl.protocol = window.location.protocol;
+      parsedUrl.host = window.location.host;
+      resolvedUrl = parsedUrl.toString();
+    }
+
+    copy(resolvedUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

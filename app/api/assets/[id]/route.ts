@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 const FP_BASE = "https://api.fastpix.io/v1";
 
 function getAuth() {
   const id = process.env.FASTPIX_ACCESS_TOKEN_ID;
   const secret = process.env.FASTPIX_SECRET_KEY;
   if (!id || !secret) throw new Error("Missing FastPix credentials");
-  return "Basic " + Buffer.from(`${id}:${secret}`).toString("base64");
+  return "Basic " + btoa(`${id}:${secret}`);
 }
 
 export async function GET(

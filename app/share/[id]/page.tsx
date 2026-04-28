@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import PlayerLoader from "@/components/PlayerLoader";
 
@@ -6,11 +7,26 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+async function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, "");
+  }
+
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  if (!host) return "http://localhost:3000";
+
+  const protocol =
+    headerStore.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
+
+  return `${protocol}://${host}`;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const title = "Watch on StreamGate";
   const description = "A video shared via StreamGate, powered by FastPix.";
-  const shareUrl = `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/share/${id}`;
+  const shareUrl = `${await getBaseUrl()}/share/${id}`;
 
   return {
     title,
@@ -31,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function WatchPage({ params }: Props) {
   const { id } = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+  const baseUrl = await getBaseUrl();
   const shareUrl = `${baseUrl}/share/${id}`;
 
   return (

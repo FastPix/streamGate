@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import fixWebmDuration from "fix-webm-duration";
+// @ts-expect-error FastPix currently ships this SDK without TypeScript declarations.
+import { Uploader as FastPixUploader } from "@fastpix/resumable-uploads";
 
 type RecordState =
   | { phase: "idle" }
@@ -33,7 +35,74 @@ export default function Recorder() {
     if (timerRef.current) clearInterval(timerRef.current);
   }
 
-  const startRecording = useCallback(async (mode: "screen" | "camera") => {
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    stopTimer();
+    setState({ phase: "uploading", progress: 0 });
+  }
+
+  async function uploadBlob(blob: Blob) {
+    try {
+      const res = await fetch("/api/uploads", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const { uploadId, url } = await res.json();
+
+      await new Promise<void>((resolve, reject) => {
+        const file = new File([blob], "recording.webm", { type: blob.type || "video/webm" });
+        const upload = FastPixUploader.init({
+          endpoint: url,
+          file,
+          retryChunkAttempt: 5,
+          delayRetry: 1,
+        });
+
+        upload.on("progress", (event: Event) => {
+          const progressEvent = event as CustomEvent<{ progress?: number }>;
+          setState({
+            phase: "uploading",
+            progress: Math.round(progressEvent.detail.progress ?? 0),
+          });
+        });
+
+        upload.on("success", () => resolve());
+
+        upload.on("error", (event: Event) => {
+          const errorEvent = event as CustomEvent<{ message?: string }>;
+          reject(new Error(errorEvent.detail.message || "Upload failed"));
+        });
+      });
+
+      setState({ phase: "waiting" });
+      await pollForMedia(uploadId);
+    } catch (err) {
+      setState({
+        phase: "error",
+        message: err instanceof Error ? err.message : "Upload failed",
+      });
+    }
+  }
+
+  async function pollForMedia(uploadId: string) {
+    for (let i = 0; i < 60; i++) {
+      await delay(2000);
+      const res = await fetch(`/api/uploads/${uploadId}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.mediaId && data.status !== "waiting") {
+        router.push(`/share/${data.mediaId}`);
+        return;
+      }
+    }
+    setState({ phase: "error", message: "Timed out waiting for video to process" });
+  }
+
+  function formatTime(s: number) {
+    const m = String(Math.floor(s / 60)).padStart(2, "0");
+    const sec = String(s % 60).padStart(2, "0");
+    return `${m}:${sec}`;
+  }
+
+  async function startRecording(mode: "screen" | "camera") {
     try {
       const videoConstraints = {
         width: { ideal: 1920 },
@@ -89,71 +158,10 @@ export default function Recorder() {
         message: isNotAllowed
           ? 'Access denied. When prompted, click "Allow" — or check your browser\'s camera/microphone permissions and try again.'
           : isNotSupported
-          ? "Screen/camera recording isn't supported here. Open the app directly in your browser (not inside an iframe)."
-          : "Could not start recording. Try a different browser.",
+            ? "Screen/camera recording isn't supported here. Open the app directly in your browser (not inside an iframe)."
+            : "Could not start recording. Try a different browser.",
       });
     }
-  }, []);
-
-  function stopRecording() {
-    mediaRecorderRef.current?.stop();
-    stopTimer();
-    setState({ phase: "uploading", progress: 0 });
-  }
-
-  async function uploadBlob(blob: Blob) {
-    try {
-      const res = await fetch("/api/uploads", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to get upload URL");
-      const { uploadId, url } = await res.json();
-
-      // Upload directly via PUT (signed GCS URL only accepts PUT, not resumable POST)
-      await new Promise<void>((resolve, reject) => {
-        const file = new File([blob], "recording.webm", { type: blob.type || "video/webm" });
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", url);
-        xhr.setRequestHeader("Content-Type", file.type);
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setState({ phase: "uploading", progress: Math.round((e.loaded / e.total) * 100) });
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`Upload failed: ${xhr.status}`));
-        };
-        xhr.onerror = () => reject(new Error("Upload failed"));
-        xhr.send(file);
-      });
-
-      setState({ phase: "waiting" });
-      await pollForMedia(uploadId);
-    } catch (err) {
-      setState({
-        phase: "error",
-        message: err instanceof Error ? err.message : "Upload failed",
-      });
-    }
-  }
-
-  async function pollForMedia(uploadId: string) {
-    for (let i = 0; i < 60; i++) {
-      await delay(2000);
-      const res = await fetch(`/api/uploads/${uploadId}`);
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.mediaId && data.status !== "waiting") {
-        router.push(`/share/${data.mediaId}`);
-        return;
-      }
-    }
-    setState({ phase: "error", message: "Timed out waiting for video to process" });
-  }
-
-  function formatTime(s: number) {
-    const m = String(Math.floor(s / 60)).padStart(2, "0");
-    const sec = String(s % 60).padStart(2, "0");
-    return `${m}:${sec}`;
   }
 
   if (state.phase === "recording") {

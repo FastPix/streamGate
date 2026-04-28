@@ -1,15 +1,23 @@
-import { createHmac } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+
+export const runtime = "edge";
 
 const WEBHOOK_SECRET = process.env.FASTPIX_WEBHOOK_SECRET ?? "";
 
-function verifySignature(rawBody: string, signatureHeader: string): boolean {
+async function verifySignature(rawBody: string, signatureHeader: string): Promise<boolean> {
   if (!WEBHOOK_SECRET) return true; // skip verification if not configured
 
   try {
-    const expected = createHmac("sha256", WEBHOOK_SECRET)
-      .update(rawBody)
-      .digest("base64");
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(WEBHOOK_SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
+    const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
     return expected === signatureHeader;
   } catch {
     return false;
@@ -20,7 +28,7 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signatureHeader = req.headers.get("fastpix-signature") ?? "";
 
-  if (!verifySignature(rawBody, signatureHeader)) {
+  if (!(await verifySignature(rawBody, signatureHeader))) {
     console.warn("FastPix webhook signature verification failed");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }

@@ -83,7 +83,7 @@ export default function TermsPage() {
       <div className="mt-14 pt-6 border-t border-white/10 flex items-center justify-between text-xs text-gray-700">
         <span>© {new Date().getFullYear()} StreamGate</span>
         <a
-          href="https://github.com/FastPix/streamGate/issues"
+          href="https://github.com/FastPix/streamgate/issues"
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-gray-500 transition-colors"
