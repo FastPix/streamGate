@@ -20,7 +20,7 @@ StreamGate demonstrates a complete video upload and playback workflow using Fast
 | FastPix account | `Required` | API credentials and media storage |
 | Internet | `Required` | API communication and media delivery |
 
-> Pro Tip: Use Node.js 20 LTS for optimal compatibility with Next.js 16 and the FastPix Node SDK.
+> Pro Tip: Use Node.js 20 LTS for optimal compatibility with Next.js 16 and local development.
 
 ### Getting Started with FastPix
 
@@ -49,8 +49,8 @@ To run StreamGate, you need a FastPix account and API credentials:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/FastPix/streamGate.git
-cd streamGate
+git clone https://github.com/FastPix/streamgate.git
+cd streamgate
 npm install
 ```
 
@@ -68,7 +68,7 @@ Open it and add:
 FASTPIX_ACCESS_TOKEN_ID=your-access-token-id
 FASTPIX_SECRET_KEY=your-secret-key
 FASTPIX_WEBHOOK_SECRET=your-webhook-secret   # optional but recommended
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_BASE_URL=http://localhost:3000   # set to your real domain in production
 ```
 
 Get your Access Token ID and Secret Key from the [FastPix Dashboard](https://dashboard.fastpix.io) under **Settings → Access Tokens**.
@@ -89,10 +89,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Upload API
 
-Manage the full video upload lifecycle — from generating signed URLs to polling for asset readiness.
+Manage the full video upload lifecycle — from creating a FastPix upload session to polling for asset readiness.
 
 #### Upload
-- **Create Upload URL** — `POST /api/uploads` — generates a signed FastPix upload URL and returns `uploadId` + `url`
+- **Create Upload** — `POST /api/uploads` — creates a FastPix upload and returns `uploadId` + `url` for the browser upload SDK
 - **Poll Upload Status** — `GET /api/uploads/[id]` — checks the upload status and returns `mediaId` once the asset is created
 
 #### Assets
@@ -126,27 +126,26 @@ You can copy individual pieces of StreamGate into your own project rather than r
 Copy these files into your Next.js project for server-side FastPix integration:
 
 ```
-lib/fastpix.ts
 app/api/uploads/route.ts
 app/api/uploads/[id]/route.ts
 app/api/assets/[id]/route.ts
 app/api/webhooks/fastpix/route.ts     # optional
 ```
 
-Install the dependency:
-
-```bash
-npm install @fastpix/fastpix-node
-```
-
-Then call the routes from your existing frontend:
+No extra FastPix server SDK is required for these routes. Then call the routes from your existing frontend:
 
 ```js
-// 1. Get a signed upload URL
+import { Uploader } from "@fastpix/resumable-uploads";
+
+// 1. Create an upload
 const { uploadId, url } = await fetch('/api/uploads', { method: 'POST' }).then(r => r.json());
 
-// 2. Upload the file directly to FastPix via PUT
-await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+// 2. Upload the file with FastPix's resumable web SDK
+await new Promise((resolve, reject) => {
+  const upload = Uploader.init({ endpoint: url, file });
+  upload.on('success', resolve);
+  upload.on('error', (event) => reject(new Error(event.detail?.message || 'Upload failed')));
+});
 
 // 3. Poll until the media asset is ready (with a 2-minute timeout)
 let mediaId;
@@ -187,36 +186,29 @@ import Recorder from '@/components/Recorder';
 
 Additional dependencies:
 ```bash
-npm install @fastpix/fp-player swr fix-webm-duration
+npm install @fastpix/fp-player @fastpix/resumable-uploads swr fix-webm-duration
 ```
 
-### Option C — FastPix SDK directly
+### Option C — FastPix API directly
 
-For non-Next.js backends, use the FastPix Node SDK directly:
+For non-Next.js backends, call the FastPix API directly:
 
 ```bash
-npm install @fastpix/fastpix-node
+curl -X POST "https://api.fastpix.io/v1/on-demand/upload" \
+  -u "$FASTPIX_ACCESS_TOKEN_ID:$FASTPIX_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -H "X-Client-Type: web-browser" \
+  -d '{
+    "corsOrigin": "http://localhost:3000",
+    "pushMediaSettings": {
+      "accessPolicy": "public",
+      "mediaQuality": "premium",
+      "maxResolution": "1080p"
+    }
+  }'
 ```
 
-```js
-import { Fastpix } from '@fastpix/fastpix-node';
-
-const fp = new Fastpix({
-  security: {
-    username: process.env.FASTPIX_ACCESS_TOKEN_ID,
-    password: process.env.FASTPIX_SECRET_KEY,
-  },
-});
-
-const result = await fp.inputVideo.upload({
-  corsOrigin: '*',
-  pushMediaSettings: { accessPolicy: 'public', mediaQuality: 'premium', maxResolution: '1080p' },
-});
-
-console.log(result.data.uploadId, result.data.url);
-```
-
-See the [FastPix API reference](https://docs.fastpix.io/reference/signingkeys-overview) for the full SDK documentation.
+See the [FastPix API reference](https://docs.fastpix.io/reference/signingkeys-overview) and the resumable uploads SDK for web docs for the full upload flow.
 
 
 <!-- Start Webhooks [webhooks] -->
@@ -269,45 +261,56 @@ FastPix API errors are logged to the server console with full detail including s
 
 ## Deployment
 
-### Cloudflare Pages (recommended)
+### Cloudflare Workers (recommended)
 
-#### 1. Install the adapter
+StreamGate is a full-stack Next.js App Router app with SSR routes and API handlers. Deploy it with the current Cloudflare Workers + OpenNext flow rather than the older Cloudflare Pages + `next-on-pages` setup.
 
-```bash
-npm install --save-dev @cloudflare/next-on-pages wrangler
-```
+Official references:
+- [Cloudflare Workers: Next.js guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/)
+- [Cloudflare Pages: Next.js overview](https://developers.cloudflare.com/pages/framework-guides/nextjs/)
 
-#### 2. Create `wrangler.toml`
-
-```toml
-name = "streamgate"
-compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".vercel/output/static"
-```
-
-> `nodejs_compat` is required for the FastPix SDK and the `crypto` module used in webhook signature verification.
-
-#### 3. Add build scripts to `package.json`
-
-```json
-"scripts": {
-  "pages:build": "npx @cloudflare/next-on-pages",
-  "pages:deploy": "npm run pages:build && wrangler pages deploy"
-}
-```
-
-#### 4. Deploy
+#### 1. Install Wrangler
 
 ```bash
-npm run pages:deploy
+npm install --save-dev wrangler@latest
 ```
 
-#### 5. Set environment variables
+#### 2. Configure environment variables
 
-In the [Cloudflare Dashboard](https://dash.cloudflare.com) go to **Pages → your project → Settings → Environment variables** and add all four variables for both Production and Preview environments.
+In the Cloudflare dashboard, add these variables for both preview and production builds:
 
-Update `NEXT_PUBLIC_BASE_URL` to your production domain (e.g. `https://streamgate.dev`).
+```env
+FASTPIX_ACCESS_TOKEN_ID=your-access-token-id
+FASTPIX_SECRET_KEY=your-secret-key
+FASTPIX_WEBHOOK_SECRET=your-webhook-secret
+NEXT_PUBLIC_BASE_URL=https://your-domain.example
+```
+
+`NEXT_PUBLIC_BASE_URL` should be your final deployed URL so Open Graph metadata and server-rendered share links use the correct host.
+
+#### 3. Deploy an existing project
+
+With Wrangler 4.68.0+ you can deploy this repo directly:
+
+```bash
+npx wrangler deploy
+```
+
+Wrangler will detect Next.js, configure the OpenNext adapter, and deploy the app to Cloudflare Workers.
+
+#### 4. Optional: commit the generated config
+
+If you want deployment config checked into git, run the deploy once locally and commit the generated Cloudflare files (`wrangler.jsonc`, OpenNext config, and related updates) after verifying they work for your account and domain setup.
+
+#### 5. Preview locally in the Workers runtime
+
+For production-like testing after Cloudflare configuration is in place:
+
+```bash
+npx wrangler dev
+```
+
+For normal app development, `npm run dev` is still the fastest local workflow.
 
 
 ## Environment Variables Reference
@@ -317,7 +320,7 @@ Update `NEXT_PUBLIC_BASE_URL` to your production domain (e.g. `https://streamgat
 | `FASTPIX_ACCESS_TOKEN_ID` | Yes | Basic Auth username for the FastPix API |
 | `FASTPIX_SECRET_KEY` | Yes | Basic Auth password for the FastPix API |
 | `FASTPIX_WEBHOOK_SECRET` | No | HMAC-SHA256 key for verifying webhook payloads |
-| `NEXT_PUBLIC_BASE_URL` | No | Base URL used in shareable links (e.g. `https://streamgate.dev`, defaults to `http://localhost:3000`) |
+| `NEXT_PUBLIC_BASE_URL` | Recommended | Base URL used for share links and metadata. Use `http://localhost:3000` locally and your real domain in deployed environments. |
 
 
 ## License

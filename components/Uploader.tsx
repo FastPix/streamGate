@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+// @ts-expect-error FastPix currently ships this SDK without TypeScript declarations.
+import { Uploader as FastPixUploader } from "@fastpix/resumable-uploads";
 
 type UploadState =
   | { phase: "idle" }
@@ -19,34 +21,35 @@ export default function Uploader() {
     setState({ phase: "uploading", progress: 0, fileName: file.name });
 
     try {
-      // 1. Get signed upload URL from our API (uses FastPix Node SDK server-side)
       const res = await fetch("/api/uploads", { method: "POST" });
       if (!res.ok) throw new Error("Failed to get upload URL");
       const { uploadId, url } = await res.json();
 
-      // 2. Upload file directly via PUT to the FastPix signed GCS URL
       await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", url);
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setState({
-              phase: "uploading",
-              progress: Math.round((e.loaded / e.total) * 100),
-              fileName: file.name,
-            });
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`Upload failed: ${xhr.status}`));
-        };
-        xhr.onerror = () => reject(new Error("Upload failed"));
-        xhr.send(file);
+        const upload = FastPixUploader.init({
+          endpoint: url,
+          file,
+          retryChunkAttempt: 5,
+          delayRetry: 1,
+        });
+
+        upload.on("progress", (event: Event) => {
+          const progressEvent = event as CustomEvent<{ progress?: number }>;
+          setState({
+            phase: "uploading",
+            progress: Math.round(progressEvent.detail.progress ?? 0),
+            fileName: file.name,
+          });
+        });
+
+        upload.on("success", () => resolve());
+
+        upload.on("error", (event: Event) => {
+          const errorEvent = event as CustomEvent<{ message?: string }>;
+          reject(new Error(errorEvent.detail.message || "Upload failed"));
+        });
       });
 
-      // 3. Poll until FastPix creates the media asset
       setState({ phase: "waiting", fileName: file.name });
       await pollForMedia(uploadId);
     } catch (err) {

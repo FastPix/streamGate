@@ -9,8 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@fastpix/fastpix-node": "^2.0.4",
     "@fastpix/fp-player": "^1.0.17",
+    "@fastpix/resumable-uploads": "^1.0.3",
     "copy-to-clipboard": "^3.3.3",
     "fix-webm-duration": "^1.0.6",
     "next": "16.2.4",
